@@ -1,6 +1,8 @@
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from captcha_solver import get_ordered_click_points_with_image_size # 识别验证码并返回点击坐标
 import time
 import datetime
 import warnings
@@ -987,14 +989,260 @@ def click_book(driver):
 def click_submit_order(driver):
     print("提交订单")
     log_str = "提交订单\n"
-    driver.switch_to.window(driver.window_handles[-1])
+
+    def extract_verify_targets(msg_text):
+        # 示例: 请依次点击【并,果,界】
+        text = (msg_text or "").strip()
+        match = re.search(r"[【\[\(（](.*?)[】\]\)）]", text)
+        content = match.group(1) if match else text
+        items = [x.strip() for x in re.split(r"[，,、\s]+", content) if x.strip()]
+        if not items:
+            items = [ch for ch in content if ch.strip()]
+        return items
+
+    try:
+        driver.switch_to.window(driver.window_handles[-1])
+    except Exception:
+        pass
+
+    def has_visible_verifybox():
+        boxes = driver.find_elements(By.CSS_SELECTOR, "div.verifybox")
+        for b in boxes:
+            try:
+                if b.is_displayed():
+                    return True
+            except Exception:
+                continue
+        return False
+
     WebDriverWait(driver, 10).until_not(
         EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located((By.CLASS_NAME, 'payHandleItem')))
-    driver.find_element(By.XPATH,
-        '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div/div/div[2]').click()
-    #result = EC.alert_is_present()(driver)
+
+    # 先点击“提交订单”按钮（兼容旧版XPath和新版文本按钮）
+    clicked = False
+
+    # 旧版按钮先做“快速尝试”，避免每次都等待较长超时
+    try:
+        legacy_buttons = driver.find_elements(
+            By.XPATH,
+            '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div/div/div[2]'
+        )
+        if legacy_buttons:
+            driver.execute_script("arguments[0].click();", legacy_buttons[0])
+            clicked = True
+    except Exception:
+        pass
+
+    if not clicked:
+        # 新版按钮短等待，兼顾稳定性和速度
+        try:
+            WebDriverWait(driver, 0.5).until(
+                lambda d: len(
+                    d.find_elements(
+                        By.XPATH,
+                        "//*[contains(@class,'btn') and (normalize-space(text())='提交订单' or normalize-space(text())='提交' or normalize-space(text())='确认提交')]"
+                    )
+                ) > 0
+            )
+        except Exception:
+            pass
+
+        submit_buttons = driver.find_elements(
+            By.XPATH,
+            "//*[contains(@class,'btn') and normalize-space(text())='提交']"
+        )
+        for btn in submit_buttons:
+            try:
+                if not btn.is_displayed():
+                    continue
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                time.sleep(0.1)
+                driver.execute_script("arguments[0].click();", btn)
+                clicked = True
+                break
+            except Exception:
+                continue
+
+    if not clicked:
+        raise Exception("未找到提交订单按钮")
+
+    # 0) 处理“请依次点击【】”图形验证码弹窗
+    verify_boxes = driver.find_elements(By.CSS_SELECTOR, "div.verifybox")
+    if verify_boxes:
+        print("检测到图形验证码弹窗，开始识别并点击...")
+
+        def find_visible_verify_img_element():
+            verify_img_selectors = [
+                "div.verifybox div.verify-img-area",
+                "div.verifybox div.verify-img",
+                "div.verifybox canvas",
+                "div.verifybox img",
+            ]
+            for selector in verify_img_selectors:
+                elems = driver.find_elements(By.CSS_SELECTOR, selector)
+                for elem in elems:
+                    if elem.is_displayed():
+                        return elem
+            return None
+
+        def click_refresh_verify_image():
+            refresh_selectors = [
+                "div.verifybox div.verify-refresh",
+                "div.verifybox i.icon-refresh",
+                "div.verifybox i.iconfont.icon-refresh",
+            ]
+            for selector in refresh_selectors:
+                elems = driver.find_elements(By.CSS_SELECTOR, selector)
+                for elem in elems:
+                    try:
+                        if not elem.is_displayed():
+                            continue
+                        driver.execute_script("arguments[0].click();", elem)
+                        return True
+                    except Exception:
+                        continue
+            return False
+
+        solved = False
+        max_verify_retry = 4
+
+        for attempt in range(1, max_verify_retry + 1):
+            try:
+                verify_msg_el = WebDriverWait(driver, 5).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, "span.verify-msg"))
+                )
+                verify_text = verify_msg_el.text.strip()
+                targets = extract_verify_targets(verify_text)
+                print(f"验证码第{attempt}次，目标顺序: {targets}")
+
+                verify_img_el = find_visible_verify_img_element()
+                if verify_img_el is None:
+                    raise Exception("未找到验证码图片容器元素")
+
+                t0 = time.perf_counter()
+                img_bytes = verify_img_el.screenshot_as_png
+                t1 = time.perf_counter()
+
+                try:
+                    points, img_w, img_h = get_ordered_click_points_with_image_size(
+                        img_bytes,
+                        targets,
+                        fast_mode=True,
+                    )
+                    mode = "fast"
+                except Exception:
+                    points, img_w, img_h = get_ordered_click_points_with_image_size(
+                        img_bytes,
+                        targets,
+                        fast_mode=False,
+                    )
+                    mode = "fallback"
+                t2 = time.perf_counter()
+
+                print(
+                    "验证码耗时: screenshot=%.3fs, ocr(%s)=%.3fs"
+                    % (t1 - t0, mode, t2 - t1)
+                )
+                print("识别到点击坐标:", points)
+
+                for x, y in points:
+                    # 在验证码元素内部按相对坐标点击，避免 ActionChains 偏移差异
+                    rx = float(x) / float(img_w)
+                    ry = float(y) / float(img_h)
+                    driver.execute_script(
+                        """
+                        const el = arguments[0];
+                        const rx = arguments[1];
+                        const ry = arguments[2];
+                        const rect = el.getBoundingClientRect();
+                        const ox = rx * rect.width;
+                        const oy = ry * rect.height;
+                        const clientX = rect.left + ox;
+                        const clientY = rect.top + oy;
+                        const evt = new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            clientX,
+                            clientY
+                        });
+                        el.dispatchEvent(evt);
+                        """,
+                        verify_img_el,
+                        rx,
+                        ry,
+                    )
+                    time.sleep(0.25)
+
+                # 等待验证码框关闭，若未关闭则刷新重试
+                try:
+                    WebDriverWait(driver, 4).until(
+                        lambda d: not has_visible_verifybox()
+                    )
+                    solved = True
+                    log_str += "已完成图形验证码点击\n"
+                    break
+                except Exception:
+                    # 有时已通过但 DOM 仍在变更，这里再做一次状态确认
+                    if not has_visible_verifybox():
+                        solved = True
+                        log_str += "已完成图形验证码点击\n"
+                        break
+                    print(f"第{attempt}次验证码可能未通过，尝试刷新验证码")
+                    if attempt < max_verify_retry:
+                        refreshed = click_refresh_verify_image()
+                        if not refreshed:
+                            print("未找到验证码刷新按钮，稍后重试")
+                        time.sleep(0.6)
+                    else:
+                        break
+
+            except Exception as e:
+                print(f"第{attempt}次验证码处理异常: {e}")
+
+                # 若异常发生时验证码弹窗已消失，视为本轮已通过
+                if not has_visible_verifybox():
+                    solved = True
+                    log_str += "已完成图形验证码点击\n"
+                    break
+
+                if attempt < max_verify_retry:
+                    refreshed = click_refresh_verify_image()
+                    if refreshed:
+                        print("已点击刷新验证码，准备重试")
+                    time.sleep(0.6)
+                else:
+                    break
+
+        if not solved:
+            raise Exception("验证码多次识别/点击后仍未通过")
+
+    # 1) 捕捉原生 alert 弹窗
+    try:
+        alert = WebDriverWait(driver, 3).until(EC.alert_is_present())
+        alert_text = alert.text
+        print("捕捉到原生弹窗:", alert_text)
+        log_str += "弹窗内容: %s\n" % alert_text
+        alert.accept()
+        log_str += "已确认原生弹窗\n"
+    except Exception:
+        pass
+
+    # 2) 捕捉页面内模态弹窗（如 ivu-modal）
+    modal_buttons = driver.find_elements(
+        By.XPATH,
+        "//div[contains(@class,'ivu-modal')]//*[contains(@class,'btn') and (normalize-space(text())='确定' or normalize-space(text())='确认' or normalize-space(text())='我知道了' or normalize-space(text())='继续提交')]"
+    )
+    for btn in modal_buttons:
+        try:
+            if not btn.is_displayed():
+                continue
+            driver.execute_script("arguments[0].click();", btn)
+            log_str += "已确认页面弹窗\n"
+            break
+        except Exception:
+            continue
+
     print("提交订单成功")
     log_str += "提交订单成功\n"
     return log_str
@@ -1003,14 +1251,63 @@ def click_submit_order(driver):
 def click_pay(driver):
     print("付款（校园卡）")
     log_str = "付款（校园卡）\n"
-    driver.switch_to.window(driver.window_handles[-1])
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[3]/div[7]/div[2]')))
-    time.sleep(2)
-    driver.find_element(By.XPATH,
-        '/html/body/div[1]/div/div/div[3]/div[2]/div/div[3]/div[7]/div[2]').click()
+    try:
+        driver.switch_to.window(driver.window_handles[-1])
+    except Exception:
+        pass
+
+    WebDriverWait(driver, 12).until_not(
+        EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix"))
+    )
+
+    # 新版页面默认已选校园卡，只需点击底部按钮组里的“支付”按钮。
+    # 该按钮常见结构: div.btn-group > div.btn("支付") + span("(576s)")
+    specific_pay_selectors = [
+        (By.XPATH, "//div[contains(@class,'btn-group')]//div[contains(@class,'btn') and contains(normalize-space(.), '支付') and not(contains(normalize-space(.), '取消'))]"),
+        (By.XPATH, "//div[contains(@class,'btn-group')]//*[contains(@class,'btn') and .//span[contains(normalize-space(.), 's')] and contains(normalize-space(.), '支付')]"),
+    ]
+
+    pay_selectors = [
+        (By.XPATH, "//button[normalize-space(text())='支付' or normalize-space(text())='立即支付' or normalize-space(text())='确认支付']"),
+        (By.XPATH, "//div[contains(@class,'btn') and (normalize-space(text())='支付' or normalize-space(text())='立即支付' or normalize-space(text())='确认支付') ]"),
+        (By.XPATH, "//*[contains(@class,'pay') and (self::button or self::div or self::span)]"),
+    ]
+
+    clicked = False
+    for by, selector in specific_pay_selectors + pay_selectors:
+        elements = driver.find_elements(by, selector)
+        for el in elements:
+            try:
+                if not el.is_displayed():
+                    continue
+                text = (el.text or "").strip()
+                if "取消" in text:
+                    continue
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                time.sleep(0.2)
+                try:
+                    el.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", el)
+                clicked = True
+                break
+            except Exception:
+                continue
+        if clicked:
+            break
+
+    if not clicked:
+        raise Exception("未找到可点击的支付按钮")
+
+    # 点击后等待页面状态变化，避免误判。
+    time.sleep(0.5)
+    try:
+        WebDriverWait(driver, 8).until_not(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix"))
+        )
+    except Exception:
+        pass
+
     print("付款成功")
     log_str += "付款成功\n"
     return log_str
