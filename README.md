@@ -77,6 +77,11 @@ pip3 install selenium==2.48.0
 [Apache License 2.0](https://github.com/yanyuandaxia/PKUAutoBookingVenues/blob/main/LICENSE)
 
 ## 版本历史
+### version 3.1
+
+- 发布于 2026.4.16
+- 智慧场馆系统更新，本代码也同步更新。判断逻辑改进、增加安全验证（ddddocr实现）
+
 ### version 2.6
 
 - 发布于 2022.3.11
