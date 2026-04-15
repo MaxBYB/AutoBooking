@@ -2,7 +2,9 @@ from configparser import ConfigParser
 from os import stat
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as Chrome_Options
+from selenium.webdriver.chrome.service import Service as Chrome_Service
 from selenium.webdriver.firefox.options import Options as Firefox_Options
+from selenium.webdriver.firefox.service import Service as Firefox_Service
 import warnings
 import sys
 import multiprocessing as mp
@@ -59,7 +61,7 @@ def log_status(config, start_time, log_str):
     print("记录日志成功\n")
 
 
-def page(config, browser="chrome"):
+def page(config, browser="chrome", headless=True):
     user_name, password, venue, venue_num, start_time, end_time, wechat_notice, sckey = load_config(
         config)
 
@@ -74,18 +76,21 @@ def page(config, browser="chrome"):
         return False
     if browser == "chrome":
         chrome_options = Chrome_Options()
-        chrome_options.add_argument("--headless")
+        if headless:
+            chrome_options.add_argument("--headless")
+        chrome_service = Chrome_Service(executable_path=sys_path(browser="chrome"))
         driver = webdriver.Chrome(
-            options=chrome_options,
-            executable_path=sys_path(browser="chrome"),
-            service_args=['--ignore-ssl-errors=true', '--ssl-protocol=TLSv1'])
+            service=chrome_service,
+            options=chrome_options)
         print('chrome launched\n')
     elif browser == "firefox":
         firefox_options = Firefox_Options()
-        firefox_options.add_argument("--headless")
+        if headless:
+            firefox_options.add_argument("--headless")
+        firefox_service = Firefox_Service(executable_path=sys_path(browser="firefox"))
         driver = webdriver.Firefox(
-            options=firefox_options,
-            executable_path=sys_path(browser="firefox"))
+            service=firefox_service,
+            options=firefox_options)
         print('firefox launched\n')
     else:
         raise Exception("不支持此类浏览器")
@@ -93,8 +98,10 @@ def page(config, browser="chrome"):
     if status:
         try:
             log_str += login(driver, user_name, password, retry=0)
-        except:
+        except Exception as e:
             log_str += "登录失败\n"
+            log_str += "登录异常: %s\n" % str(e)
+            print("登录异常:", e)
             status = False
     if status:
         try:
@@ -152,17 +159,17 @@ def page(config, browser="chrome"):
     return status
 
 
-def sequence_run(lst_conf, browser="chrome"):
+def sequence_run(lst_conf, browser="chrome", headless=True):
     print("按序预约")
     for config in lst_conf:
         print("预约 %s" % config)
-        page(config, browser)
+        page(config, browser, headless=headless)
 
 
-def multi_run(lst_conf, browser="chrome"):
+def multi_run(lst_conf, browser="chrome", headless=True):
     parameter_list = []
     for i in range(len(lst_conf)):
-        parameter_list.append((lst_conf[i], browser))
+        parameter_list.append((lst_conf[i], browser, headless))
     print("并行预约")
     pool = mp.Pool()
     pool.starmap_async(page, parameter_list)
@@ -177,7 +184,7 @@ if __name__ == '__main__':
     # print(lst_conf)
     # multi_run(lst_conf, browser)
     # sequence_run(lst_conf, browser)
-    for i in range(3):
-        status = page('config0.ini', browser)
+    for i in range(1):
+        status = page('config0.ini', browser, headless=False)
         if status:
             break

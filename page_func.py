@@ -1,54 +1,202 @@
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from urllib.parse import quote
 import time
 import datetime
 import warnings
-import random
+import re
 warnings.filterwarnings('ignore')
 
 
+# def login(driver, user_name, password, retry=0):
+#     if retry == 1:
+#         return '智慧场馆登录失败\n'
+
+#     print('智慧场馆登录中...')
+
+#     driver.get('https://epe.pku.edu.cn/venue/login')
+
+#     # epe新版会先停留在/venue/login，需要手动点“统一身份认证登录（IAAA）”
+#     if 'epe.pku.edu.cn/venue/login' in driver.current_url.lower() and len(driver.find_elements(By.ID, 'user_name')) == 0:
+#         iaaa_buttons = driver.find_elements(
+#             By.XPATH, "//*[contains(normalize-space(text()), '统一身份认证登录') or contains(normalize-space(text()), 'IAAA')]")
+#         if len(iaaa_buttons) > 0:
+#             driver.execute_script('arguments[0].click();', iaaa_buttons[0])
+#             time.sleep(10)
+
+#     # 如果当前还没有进入IAAA表单页，兜底再尝试一次通用“登录”按钮
+#     if len(driver.find_elements(By.ID, 'user_name')) == 0:
+#         login_buttons = driver.find_elements(
+#             By.XPATH, "//*[contains(normalize-space(text()), '登录')]")
+#         if len(login_buttons) > 0:
+#             driver.execute_script('arguments[0].click();', login_buttons[0])
+#             time.sleep(10)
+
+#     has_login_form = len(driver.find_elements(By.ID, 'user_name')) > 0 and len(
+#         driver.find_elements(By.ID, 'password')) > 0 and len(driver.find_elements(By.ID, 'logon_button')) > 0
+#     if has_login_form:
+#         WebDriverWait(driver, 20).until(
+#             EC.visibility_of_element_located((By.ID, 'logon_button')))
+#         time.sleep(0.2)
+#         user_input = driver.find_element(By.ID, 'user_name')
+#         pwd_input = driver.find_element(By.ID, 'password')
+#         user_input.clear()
+#         pwd_input.clear()
+#         user_input.send_keys(user_name)
+#         time.sleep(0.2)
+#         pwd_input.send_keys(password)
+#         time.sleep(0.2)
+#         driver.find_element(By.ID, 'logon_button').click()
+
+#     try:
+#         WebDriverWait(driver,
+#                       25).until(lambda d: 'epe.pku.edu.cn/venue' in d.current_url.lower() and len(d.find_elements(By.ID, 'user_name')) == 0)
+#         print('智慧场馆登录成功')
+#         return '智慧场馆登录成功\n'
+#     except Exception as e:
+#         print('Retrying...', e)
+#         return login(driver, user_name, password, retry + 1)
+
+
+# def login(driver, user_name, password, retry=0):
+#     if retry >= 3:
+#         raise Exception("登录失败，重试次数已达上限")
+
+#     print("打开智慧场馆登录页...")
+#     driver.get("https://epe.pku.edu.cn/venue/login")
+
+#     wait = WebDriverWait(driver, 15)
+
+#     try:
+#         # 1. 等待并点击“统一身份认证登录（IAAA）”按钮
+#         iaaa_button = wait.until(
+#             EC.element_to_be_clickable(
+#                 (
+#                     By.XPATH,
+#                     "//button[contains(., '统一身份认证登录') or contains(., 'IAAA')]"
+#                 )
+#             )
+#         )
+#         iaaa_button.click()
+#         print("已点击 IAAA 登录按钮")
+
+#         # 2. 等待跳转到 IAAA 登录页
+#         wait.until(lambda d: "iaaa" in d.current_url.lower() or "oauth" in d.current_url.lower())
+#         print("已跳转到 IAAA 登录页:", driver.current_url)
+
+#         # 3. 等待用户名和密码输入框出现
+#         username_input = wait.until(
+#             EC.presence_of_element_located((By.ID, "user_name"))
+#         )
+#         password_input = wait.until(
+#             EC.presence_of_element_located((By.ID, "password"))
+#         )
+
+#         # 4. 输入账号密码
+#         username_input.clear()
+#         username_input.send_keys(user_name)
+#         password_input.clear()
+#         password_input.send_keys(password)
+
+#         # 5. 点击登录按钮
+#         login_button = wait.until(
+#             EC.element_to_be_clickable((By.ID, "logon_button"))
+#         )
+#         login_button.click()
+#         print("已提交 IAAA 登录表单")
+
+#         # 6. 等待跳回智慧场馆系统
+#         wait.until(lambda d: "epe.pku.edu.cn/venue" in d.current_url.lower())
+#         print("已返回智慧场馆系统:", driver.current_url)
+
+#         # 给前端一点加载时间
+#         time.sleep(2)
+
+#         return "登录成功\n"
+
+#     except Exception as e:
+#         print("登录异常：", repr(e))
+#         if retry < 2:
+#             print("准备重试...")
+#             time.sleep(1)
+#             return login(driver, user_name, password, retry + 1)
+#         raise
+
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+
 def login(driver, user_name, password, retry=0):
-    if retry == 3:
-        return '门户登录失败\n'
+    if retry >= 3:
+        raise Exception("登录失败，重试次数已达上限")
 
-    print('门户登录中...')
+    print("直接进入 IAAA 登录流程...")
+    wait = WebDriverWait(driver, 20)
 
-    appID = 'portal2017'
-    iaaaUrl = 'https://iaaa.pku.edu.cn/iaaa/oauth.jsp'
-    appName = quote('北京大学校内信息门户新版')
-    redirectUrl = 'https://portal.pku.edu.cn/portal2017/ssoLogin.do'
-
-    driver.get('https://portal.pku.edu.cn/portal2017/')
-    driver.get(
-        f'{iaaaUrl}?appID={appID}&appName={appName}&redirectUrl={redirectUrl}')
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    WebDriverWait(driver, 5).until(
-        EC.visibility_of_element_located((By.ID, 'logon_button')))
-    time.sleep(0.2)
-    driver.find_element_by_id('user_name').send_keys(user_name)
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    time.sleep(0.2)
-    driver.find_element_by_id('password').send_keys(password)
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    time.sleep(0.2)
-    driver.find_element_by_id('logon_button').click()
     try:
-        WebDriverWait(driver,
-                      5).until(EC.visibility_of_element_located((By.ID, 'all')))
-        print('门户登录成功')
-        return '门户登录成功\n'
-    except:
-        print('Retrying...')
-        login(driver, user_name, password, retry + 1)
+        # 关键修改：直接访问 SSO 入口
+        driver.get("https://epe.pku.edu.cn/venue-server/loginto")
 
+        print("当前URL:", driver.current_url)
+
+        # 等待跳转到 IAAA（不同学校可能是 iaaa / oauth / auth）
+        wait.until(
+            lambda d: any(x in d.current_url.lower() for x in ["iaaa", "oauth", "auth"])
+        )
+
+        print("已跳转到登录页:", driver.current_url)
+
+        # 等待输入框加载
+        username_input = wait.until(
+            EC.presence_of_element_located((By.ID, "user_name"))
+        )
+        password_input = wait.until(
+            EC.presence_of_element_located((By.ID, "password"))
+        )
+
+        # 输入账号密码
+        username_input.clear()
+        username_input.send_keys(user_name)
+
+        password_input.clear()
+        password_input.send_keys(password)
+
+        # 点击登录
+        login_button = wait.until(
+            EC.element_to_be_clickable((By.ID, "logon_button"))
+        )
+        login_button.click()
+
+        print("已提交登录信息，等待跳转...")
+
+        # 等待跳回智慧场馆系统
+        wait.until(
+            lambda d: "epe.pku.edu.cn/venue" in d.current_url.lower()
+        )
+
+        print("登录成功，当前URL:", driver.current_url)
+
+        time.sleep(2)
+        return "登录成功\n"
+
+    except Exception as e:
+        print("登录异常：", repr(e))
+
+        # 保存调试页面
+        with open("debug_login_page.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print("已保存当前页面源码到 debug_login_page.html")
+
+        if retry < 2:
+            print("准备重试...")
+            time.sleep(2)
+            return login(driver, user_name, password, retry + 1)
+
+        raise
 
 def go_to_venue(driver, venue, retry=0):
-    if retry == 3:
+    if retry == 1:
         print("进入预约 %s 界面失败" % venue)
         log_str = "进入预约 %s 界面失败\n" % venue
         return False, log_str
@@ -57,34 +205,19 @@ def go_to_venue(driver, venue, retry=0):
     log_str = "进入预约 %s 界面\n" % venue
 
     try:
-        butt_all = driver.find_element_by_id('all')
-        driver.execute_script('arguments[0].click();', butt_all)
-        WebDriverWait(driver, 10).until_not(
-            EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-        WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.ID, 'venues')))
-        time.sleep(0.5)
-        driver.find_element_by_id('venues').click()
-        while len(driver.window_handles) < 2:
-            time.sleep(0.5)
-        driver.switch_to.window(driver.window_handles[-1])
-        WebDriverWait(driver, 10).until_not(
-            EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-        WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.XPATH, "/html/body/div[1]/div/div/div[3]/div/div[3]/div[1]/div[2]")))
-        driver.find_element_by_xpath(
-            "/html/body/div[1]/div/div/div[3]/div/div[3]/div[1]/div[2]").click()
-        WebDriverWait(driver, 10).until_not(
-            EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-        WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.XPATH, '//div [contains(text(),\'%s\')]' % venue)))
-        time.sleep(0.5)
-        driver.find_element_by_xpath(
-            '//div [contains(text(),\'%s\')]' % venue).click()
+        driver.get('https://epe.pku.edu.cn/venue/home')
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.TAG_NAME, 'body')))
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.XPATH, "//*[contains(normalize-space(text()), '%s')]" % venue)))
+        driver.find_element(By.XPATH, "//*[contains(normalize-space(text()), '%s')]" % venue).click()
         status = True
         log_str += "进入预约 %s 界面成功\n" % venue
-    except:
-        print("retrying")
+    except Exception as e:
+        print("retrying", e)
+        print("当前URL:", driver.current_url)
+        log_str += "进入预约异常: %s\n" % str(e)
+        log_str += "当前URL: %s\n" % driver.current_url
         status, log_str = go_to_venue(driver, venue, retry + 1)
     return status, log_str
 
@@ -94,11 +227,11 @@ def click_agree(driver):
     log_str = "点击同意\n"
     driver.switch_to.window(driver.window_handles[-1])
     WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+        EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
     WebDriverWait(driver, 10).until(
         EC.visibility_of_element_located((By.CLASS_NAME, 'ivu-checkbox-wrapper')))
     time.sleep(0.1)
-    driver.find_element_by_class_name('ivu-checkbox-wrapper').click()
+    driver.find_element(By.CLASS_NAME, 'ivu-checkbox-wrapper').click()
     print("点击同意成功\n")
     log_str += "点击同意成功\n"
     return log_str
@@ -146,6 +279,176 @@ def judge_exceeds_days_limit(start_time, end_time):
     return start_time_list_new, end_time_list_new, delta_day_list, log_str
 
 
+# def book(driver, start_time_list, end_time_list, delta_day_list, venue_num=-1):
+#     print("查找空闲场地")
+#     log_str = "查找空闲场地\n"
+
+#     def judge_close_to_time_12():
+#         now = datetime.datetime.today()
+#         time_hour = datetime.datetime.strptime(
+#             str(now).split()[1][:-7], "%H:%M:%S")
+#         time_11_55 = datetime.datetime.strptime(
+#             "11:55:00", "%H:%M:%S")
+#         time_12 = datetime.datetime.strptime(
+#             "12:00:00", "%H:%M:%S")
+#         # time_11_55 = datetime.datetime.strptime(
+#         #     str(now).split()[1][:-7], "%H:%M:%S")
+#         # time_12 = time_11_55+datetime.timedelta(minutes=1)
+#         if time_hour < time_11_55:
+#             return 0
+#         elif time_11_55 < time_hour < time_12:
+#             return 1
+#         elif time_hour > time_12:
+#             return 2
+
+#     def judge_in_time_range(start_time, end_time, venue_time_range):
+#         vt = venue_time_range.split('-')
+#         vt_start_time = datetime.datetime.strptime(vt[0], "%H:%M")
+#         vt_end_time = datetime.datetime.strptime(vt[1], "%H:%M")
+#         if start_time <= vt_start_time and vt_end_time <= end_time:
+#             return True
+#         else:
+#             return False
+
+#     def move_to_date(delta_day):
+#         for i in range(delta_day):
+#             WebDriverWait(driver, 10).until_not(
+#                 EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+#             driver.find_element(By.XPATH,
+#                 '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/form/div/div/button[2]/i').click()
+#             time.sleep(0.2)
+
+#     def click_free(start_time, end_time, venue_num, table_num):
+#         trs = driver.find_elements(By.TAG_NAME, 'tr')
+#         # 防止表格没加载出来
+#         no_table_flag = 0
+#         while trs[1].find_elements(By.TAG_NAME,
+#                 'td')[0].find_element(By.TAG_NAME, 'div').text == "时间段":
+#             no_table_flag += 1
+#             time.sleep(0.2)
+#             trs = driver.find_elements(By.TAG_NAME, 'tr')
+#             if no_table_flag > 10:
+#                 driver.refresh()
+#                 no_table_flag = 0
+#                 move_to_date(delta_day)
+#         trs_list = []
+#         for i in range(1, len(trs)-2):
+#             vt = trs[i].find_elements(By.TAG_NAME,
+#                 'td')[0].find_element(By.TAG_NAME, 'div').text
+#             if judge_in_time_range(start_time, end_time, vt):
+#                 trs_list.append(trs[i].find_elements(By.TAG_NAME,
+#                     'td'))
+#         if len(trs_list) == 0:
+#             return False, -1, 0
+
+#         j_list = [x for x in range(1, len(trs_list[0]))]
+#         print(venue_num, table_num, j_list)
+#         if venue_num != -1 and (venue_num-table_num in j_list):
+#             flag = False
+#             for i in range(len(trs_list)):
+#                 class_name = trs_list[i][venue_num-table_num].find_element(By.TAG_NAME,
+#                     'div').get_attribute("class")
+#                 print(class_name)
+#                 if class_name.split()[2] == 'free':
+#                     flag = True
+#                     break
+#         elif venue_num != -1 and (venue_num-table_num not in j_list):
+#             return False, venue_num, table_num + len(j_list)
+#         else:
+#             # 随机点一列free的，防止每次都点第一列
+#             random.shuffle(j_list)
+#             print(j_list)
+#             for j in j_list:
+#                 flag = False
+#                 for i in range(len(trs_list)):
+#                     class_name = trs_list[i][j].find_element(By.TAG_NAME,
+#                         'div').get_attribute("class")
+#                     print(class_name)
+#                     if class_name.split()[2] == 'free':
+#                         flag = True
+#                         venue_num = j+table_num
+#                         break
+#         if flag:
+#             for i in range(len(trs_list)):
+#                 WebDriverWait(driver, 10).until_not(
+#                     EC.visibility_of_element_located((By.CSS_SELECTOR,
+#                                                       ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix.fade-leave-active.fade-leave-to")))
+#                 trs_list[i][venue_num-table_num].find_element(By.TAG_NAME,
+#                     'div').click()
+#             return True, venue_num, table_num + len(j_list)
+#         return False, venue_num, table_num + len(j_list)
+
+#     driver.switch_to.window(driver.window_handles[-1])
+#     time.sleep(1)
+#     WebDriverWait(driver, 10).until_not(
+#         EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+#     try:
+#         WebDriverWait(driver, 8).until(
+#             EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/form/div/div/div/div[1]/div/div/input')))
+#     except Exception:
+#         # 兼容新版页面结构：不再依赖旧的绝对XPath，等待预约表格核心元素出现
+#         WebDriverWait(driver, 15).until(
+#             lambda d: len(d.find_elements(By.TAG_NAME, 'tr')) > 1 or len(
+#                 d.find_elements(By.XPATH, "//*[contains(normalize-space(text()), '时间段')]")
+#             ) > 0)
+#     # 若接近但是没到12点，停留在此页面
+#     flag = judge_close_to_time_12()
+#     if flag == 1:
+#         while True:
+#             flag = judge_close_to_time_12()
+#             if flag == 2:
+#                 break
+#             else:
+#                 time.sleep(0.5)
+#         driver.refresh()
+#         WebDriverWait(driver, 5).until_not(
+#             EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+
+#     for k in range(len(start_time_list)):
+#         start_time = start_time_list[k]
+#         end_time = end_time_list[k]
+#         delta_day = delta_day_list[k]
+
+#         if k != 0:
+#             driver.refresh()
+#             time.sleep(0.5)
+
+#         move_to_date(delta_day)
+
+#         start_time = datetime.datetime.strptime(
+#             start_time.split('-')[1], "%H%M")
+#         end_time = datetime.datetime.strptime(end_time.split('-')[1], "%H%M")
+#         print("开始时间:%s" % str(start_time).split()[1])
+#         print("结束时间:%s" % str(end_time).split()[1])
+
+#         status, venue_num, table_num = click_free(
+#             start_time, end_time, venue_num, 0)
+#         # 如果第一页没有，就往后翻，直到不存在下一页
+#         while not status:
+#             next_table = driver.find_elements(By.XPATH,
+#                 '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[3]/div[1]/div/div/div/div/div/table/thead/tr/td[6]/div/span/i')
+#             WebDriverWait(driver, 10).until_not(
+#                 EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+#             time.sleep(0.1)
+#             if len(next_table) > 0:
+#                 driver.find_element(By.XPATH,
+#                     '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[3]/div[1]/div/div/div/div/div/table/thead/tr/td[6]/div/span/i').click()
+#                 status, venue_num, table_num = click_free(
+#                     start_time, end_time, venue_num, table_num)
+#             else:
+#                 break
+#         if status:
+#             log_str += "找到空闲场地，场地编号为%d\n" % venue_num
+#             print("找到空闲场地，场地编号为%d\n" % venue_num)
+#             now = datetime.datetime.now()
+#             today = datetime.datetime.strptime(str(now)[:10], "%Y-%m-%d")
+#             date = today+datetime.timedelta(days=delta_day)
+#             return status, log_str, str(date)[:10]+str(start_time)[10:], str(date)[:10]+str(end_time)[10:], venue_num
+#         else:
+#             log_str += "没有空余场地\n"
+#             print("没有空余场地\n")
+#     return status, log_str, None, None, None
+
 def book(driver, start_time_list, end_time_list, delta_day_list, venue_num=-1):
     print("查找空闲场地")
     log_str = "查找空闲场地\n"
@@ -154,175 +457,531 @@ def book(driver, start_time_list, end_time_list, delta_day_list, venue_num=-1):
         now = datetime.datetime.today()
         time_hour = datetime.datetime.strptime(
             str(now).split()[1][:-7], "%H:%M:%S")
-        time_11_55 = datetime.datetime.strptime(
-            "11:55:00", "%H:%M:%S")
-        time_12 = datetime.datetime.strptime(
-            "12:00:00", "%H:%M:%S")
-        # time_11_55 = datetime.datetime.strptime(
-        #     str(now).split()[1][:-7], "%H:%M:%S")
-        # time_12 = time_11_55+datetime.timedelta(minutes=1)
+        time_11_55 = datetime.datetime.strptime("11:55:00", "%H:%M:%S")
+        time_12 = datetime.datetime.strptime("12:00:00", "%H:%M:%S")
         if time_hour < time_11_55:
             return 0
         elif time_11_55 < time_hour < time_12:
             return 1
-        elif time_hour > time_12:
+        else:
             return 2
 
-    def judge_in_time_range(start_time, end_time, venue_time_range):
-        vt = venue_time_range.split('-')
-        vt_start_time = datetime.datetime.strptime(vt[0], "%H:%M")
-        vt_end_time = datetime.datetime.strptime(vt[1], "%H:%M")
-        if start_time <= vt_start_time and vt_end_time <= end_time:
-            return True
-        else:
-            return False
+    def normalize_text(s):
+        return (s or "").strip().replace(" ", "").replace("\n", "").replace("\t", "")
+
+    # def move_to_date(delta_day):
+    #     """
+    #     新版页面顶部日期块切换：
+    #     当前页通常会显示未来几天的日期卡片。
+    #     这里优先通过日期文本点击目标日期，而不是沿用旧版绝对 XPath。
+    #     """
+    #     target_date = (datetime.datetime.today() + datetime.timedelta(days=delta_day)).strftime("%m月%d日")
+    #     print("目标日期文本:", target_date)
+
+    #     # 等日期区域渲染出来
+    #     WebDriverWait(driver, 15).until(
+    #         lambda d: len(d.find_elements(By.XPATH, f"//*[contains(text(), '{target_date}')]")) > 0
+    #     )
+
+    #     candidates = driver.find_elements(By.XPATH, f"//*[contains(text(), '{target_date}')]")
+    #     clicked = False
+    #     for el in candidates:
+    #         try:
+    #             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+    #             time.sleep(0.2)
+    #             driver.execute_script("arguments[0].click();", el)
+    #             clicked = True
+    #             print("已点击日期:", target_date)
+    #             time.sleep(0.5)
+    #             break
+    #         except Exception:
+    #             continue
+
+    #     if not clicked:
+    #         raise Exception(f"未能点击目标日期 {target_date}")
 
     def move_to_date(delta_day):
-        for i in range(delta_day):
-            WebDriverWait(driver, 10).until_not(
-                EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-            driver.find_element_by_xpath(
-                '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/form/div/div/button[2]/i').click()
-            time.sleep(0.2)
+        target_date = (datetime.datetime.today() + datetime.timedelta(days=delta_day)).strftime("%m月%d日")
+        print("目标日期文本:", target_date)
 
-    def click_free(start_time, end_time, venue_num, table_num):
-        trs = driver.find_elements_by_tag_name('tr')
-        # 防止表格没加载出来
-        no_table_flag = 0
-        while trs[1].find_elements_by_tag_name(
-                'td')[0].find_element_by_tag_name('div').text == "时间段":
-            no_table_flag += 1
-            time.sleep(0.2)
-            trs = driver.find_elements_by_tag_name('tr')
-            if no_table_flag > 10:
-                driver.refresh()
-                no_table_flag = 0
-                move_to_date(delta_day)
-        trs_list = []
-        for i in range(1, len(trs)-2):
-            vt = trs[i].find_elements_by_tag_name(
-                'td')[0].find_element_by_tag_name('div').text
-            if judge_in_time_range(start_time, end_time, vt):
-                trs_list.append(trs[i].find_elements_by_tag_name(
-                    'td'))
-        if len(trs_list) == 0:
-            return False, -1, 0
+        # 等待日期区域出现
+        WebDriverWait(driver, 15).until(
+            lambda d: len(d.find_elements(By.XPATH, f"//span[normalize-space()='{target_date}']")) > 0
+        )
 
-        j_list = [x for x in range(1, len(trs_list[0]))]
-        print(venue_num, table_num, j_list)
-        if venue_num != -1 and (venue_num-table_num in j_list):
-            flag = False
-            for i in range(len(trs_list)):
-                class_name = trs_list[i][venue_num-table_num].find_element_by_tag_name(
-                    'div').get_attribute("class")
-                print(class_name)
-                if class_name.split()[2] == 'free':
-                    flag = True
+        # 先找到日期文字所在的 span
+        date_span = driver.find_element(By.XPATH, f"//span[normalize-space()='{target_date}']")
+
+        # 再找到可点击的日期卡片容器
+        # 从 span 往上找最近的“日期块” div
+        clickable_box = date_span.find_element(
+            By.XPATH,
+            "./ancestor::div[contains(@style,'order')][1]"
+        )
+
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", clickable_box)
+        time.sleep(0.2)
+
+        # 优先用 JS 点击，避免被内层遮挡
+        driver.execute_script("arguments[0].click();", clickable_box)
+        print("已点击日期卡片:", target_date)
+
+        time.sleep(0.8)
+
+
+    # def get_target_col_index(target_slot_text):
+    #     """
+    #     从表头找到目标时间段所在列。
+    #     表头第一列是“场地”，后面各列是时间段。
+    #     返回实际 td 索引。
+    #     """
+    #     header_tds = driver.find_elements(By.CSS_SELECTOR, "table thead tr td")
+    #     if len(header_tds) == 0:
+    #         raise Exception("未找到表头列")
+
+    #     for idx, td in enumerate(header_tds):
+    #         text = normalize_text(td.text)
+    #         if target_slot_text in text:
+    #             print("找到目标时间列:", text, "索引:", idx)
+    #             return idx
+
+    #     return None
+
+    def get_target_col_index(target_slot_text):
+        """
+        只从当前可见主表读取时间表头
+        只收集真正的时间列表头，例如 06:50-07:50
+        返回的是“时间列序号”，不是全 td 序号
+        """
+        time_headers = []
+        tables = driver.find_elements(By.CSS_SELECTOR, "table")
+
+        for table_el in tables:
+            try:
+                if not table_el.is_displayed():
+                    continue
+
+                headers = []
+                tds = table_el.find_elements(By.CSS_SELECTOR, "thead tr td")
+                for td in tds:
+                    text = normalize_text(td.text)
+                    if re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", text):
+                        headers.append(text)
+
+                if headers:
+                    time_headers = headers
                     break
-        elif venue_num != -1 and (venue_num-table_num not in j_list):
-            return False, venue_num, table_num + len(j_list)
-        else:
-            # 随机点一列free的，防止每次都点第一列
-            random.shuffle(j_list)
-            print(j_list)
-            for j in j_list:
-                flag = False
-                for i in range(len(trs_list)):
-                    class_name = trs_list[i][j].find_element_by_tag_name(
-                        'div').get_attribute("class")
-                    print(class_name)
-                    if class_name.split()[2] == 'free':
-                        flag = True
-                        venue_num = j+table_num
-                        break
-        if flag:
-            for i in range(len(trs_list)):
-                WebDriverWait(driver, 10).until_not(
-                    EC.visibility_of_element_located((By.CLASS_NAME,
-                                                      "loading.ivu-spin.ivu-spin-large.ivu-spin-fix.fade-leave-active.fade-leave-to")))
-                trs_list[i][venue_num-table_num].find_element_by_tag_name(
-                    'div').click()
-            return True, venue_num, table_num + len(j_list)
-        return False, venue_num, table_num + len(j_list)
+            except Exception:
+                continue
 
-    driver.switch_to.window(driver.window_handles[-1])
+        print("检测到的时间表头:", time_headers)
+
+        for idx, text in enumerate(time_headers):
+            if text == target_slot_text:
+                print("找到目标时间列:", text, "时间列序号:", idx)
+                return idx
+
+        return None
+
+
+    def is_available_cell(td):
+        """
+        判定单元格是否可订：
+        1. reserveBlock 的 class 含 free -> 可订
+        2. class 含 reserved 或 title/text 为已售 -> 不可订
+        3. 文本含 ￥ / ¥ 作为兜底可订
+        """
+        try:
+            block = td.find_element(By.CSS_SELECTOR, "div.reserveBlock")
+        except Exception:
+            return False
+
+        class_name = (block.get_attribute("class") or "").strip()
+        classes = class_name.split()
+        text = normalize_text(block.text)
+
+        title = ""
+        try:
+            p = block.find_element(By.TAG_NAME, "p")
+            title = normalize_text(p.get_attribute("title"))
+        except Exception:
+            pass
+
+        print("单元格 class:", class_name, "text:", text, "title:", title)
+
+        if "reserved" in classes:
+            return False
+        if "已售" in text or "已售" in title:
+            return False
+        if "free" in classes:
+            return True
+        if "￥" in text or "¥" in text or "￥" in title or "¥" in title:
+            return True
+
+        return False
+
+    def click_target_cell(td):
+        """
+        点击 reserveBlock 本体，而不是旧版里的内层 div
+        """
+        block = td.find_element(By.CSS_SELECTOR, "div.reserveBlock")
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", block)
+        time.sleep(0.2)
+        driver.execute_script("arguments[0].click();", block)
+        time.sleep(0.3)
+
+    def get_row_venue_num(row):
+        """
+        每行第一列是场地号，例如“1号”
+        """
+        tds = row.find_elements(By.TAG_NAME, "td")
+        if len(tds) == 0:
+            return None
+        venue_text = normalize_text(tds[0].text)
+        try:
+            return int(venue_text.replace("号", ""))
+        except Exception:
+            return None
+
+    def try_find_and_click_slot(target_slot_text, wanted_venue_num):
+        """
+        在当前页里查找目标时间列，并在所有场地行里点击可订单元格。
+        如果指定 wanted_venue_num，则只尝试该场地。
+        """
+        target_col_idx = get_target_col_index(target_slot_text)
+        if target_col_idx is None:
+            print("当前页没有目标时间列:", target_slot_text)
+            return False, -1
+
+        rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+        print("当前表格行数:", len(rows))
+
+        for row in rows:
+            row_venue_num = get_row_venue_num(row)
+            if row_venue_num is None:
+                continue
+
+            if wanted_venue_num != -1 and row_venue_num != wanted_venue_num:
+                continue
+
+            tds = row.find_elements(By.TAG_NAME, "td")
+
+            # 第 0 列是场地号，所以时间列要 +1
+            actual_td_idx = target_col_idx + 1
+            if len(tds) <= actual_td_idx:
+                continue
+
+            target_td = tds[actual_td_idx]
+            print(f"检查场地 {row_venue_num} 号，目标列索引 {target_col_idx}")
+
+            if is_available_cell(target_td):
+                try:
+                    click_target_cell(target_td)
+                    print(f"成功点击场地 {row_venue_num} 号，时间段 {target_slot_text}")
+                    return True, row_venue_num
+                except Exception as e:
+                    print("点击单元格失败:", e)
+
+        return False, -1
+
+    # def goto_time_page_until_found(target_slot_text, wanted_venue_num, max_turns=12):
+    #     """
+    #     时间列可能分页显示，右上角有箭头。
+    #     这里逐页查找目标时间列。
+    #     """
+    #     for _ in range(max_turns):
+    #         status, found_venue_num = try_find_and_click_slot(target_slot_text, wanted_venue_num)
+    #         if status:
+    #             return True, found_venue_num
+
+    #         # 尝试点击右箭头翻时间页
+    #         next_candidates = driver.find_elements(
+    #             By.XPATH,
+    #             "//*[contains(@class,'arrowWrap') or contains(@class,'arrow')]"
+    #         )
+
+    #         clicked = False
+    #         for btn in next_candidates:
+    #             try:
+    #                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+    #                 time.sleep(0.1)
+    #                 driver.execute_script("arguments[0].click();", btn)
+    #                 print("点击时间翻页箭头")
+    #                 time.sleep(0.5)
+    #                 clicked = True
+    #                 break
+    #             except Exception:
+    #                 continue
+
+    #         if not clicked:
+    #             print("未找到可用的时间翻页箭头")
+    #             break
+
+    #     return False, -1
+
+    def goto_time_page_until_found(target_slot_text, wanted_venue_num, max_turns=12):
+        """
+        时间列可能分页显示。
+        只点击“当前主预约表表头最后一个时间列”里的右箭头。
+        """
+
+        def get_visible_time_headers():
+            tables = driver.find_elements(By.CSS_SELECTOR, "table")
+            for table in tables:
+                try:
+                    if not table.is_displayed():
+                        continue
+
+                    tds = table.find_elements(By.CSS_SELECTOR, "thead tr td")
+                    headers = []
+                    for td in tds:
+                        text = normalize_text(td.text)
+                        if re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", text):
+                            headers.append(text)
+
+                    # 只接受真正的预约表：既有时间头，也有 reserveBlock
+                    if headers and len(table.find_elements(By.CSS_SELECTOR, "div.reserveBlock")) > 0:
+                        return headers
+                except Exception:
+                    continue
+            return []
+
+        def find_right_arrow_for_current_table():
+            """
+            精确找到当前主预约表“最后一个时间列”里的右箭头 icon
+            """
+            current_headers = get_visible_time_headers()
+            if not current_headers:
+                return None, None
+
+            last_header = current_headers[-1]
+            print("当前最后一个时间表头:", last_header)
+
+            tables = driver.find_elements(By.CSS_SELECTOR, "table")
+            for table in tables:
+                try:
+                    if not table.is_displayed():
+                        continue
+
+                    if len(table.find_elements(By.CSS_SELECTOR, "div.reserveBlock")) == 0:
+                        continue
+
+                    header_tds = table.find_elements(By.CSS_SELECTOR, "thead tr td")
+                    for td in header_tds:
+                        text = normalize_text(td.text)
+
+                        # 找到“最后一个时间段”对应的表头单元格
+                        if last_header == text:
+                            icons = td.find_elements(By.CSS_SELECTOR, "i.ivu-icon.ivu-icon-ios-arrow-forward")
+                            for icon in icons:
+                                if icon.is_displayed():
+                                    return icon, table
+                except Exception:
+                    continue
+
+            return None, None
+
+        def click_right_arrow_and_wait_change():
+            before_headers = get_visible_time_headers()
+            print("点击前时间表头:", before_headers)
+
+            icon, table = find_right_arrow_for_current_table()
+            if icon is None:
+                print("没有找到当前主预约表最后一个时间列里的右箭头")
+                return False
+
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", icon)
+                time.sleep(0.1)
+
+                # 先尝试原生 click
+                try:
+                    icon.click()
+                    print("已原生点击正确表头中的右箭头 icon")
+                except Exception:
+                    driver.execute_script("arguments[0].click();", icon)
+                    print("已JS点击正确表头中的右箭头 icon")
+            except Exception as e:
+                print("点击右箭头失败:", e)
+                return False
+
+            # 等待重新渲染后再抓
+            time.sleep(1.0)
+
+            try:
+                WebDriverWait(driver, 5).until(
+                    lambda d: (
+                        len(get_visible_time_headers()) > 0 and
+                        (
+                            get_visible_time_headers() != before_headers or
+                            target_slot_text in get_visible_time_headers()
+                        )
+                    )
+                )
+            except Exception:
+                pass
+
+            after_headers = get_visible_time_headers()
+            print("点击后重新抓取时间表头:", after_headers)
+
+            if target_slot_text in after_headers:
+                print("翻页成功，目标时间已出现")
+                return True
+
+            if after_headers and after_headers != before_headers:
+                print("翻页成功，表头已变化")
+                return True
+
+            print("翻页后表头未有效变化")
+            return False
+
+        for _ in range(max_turns):
+            status, found_venue_num = try_find_and_click_slot(target_slot_text, wanted_venue_num)
+            if status:
+                return True, found_venue_num
+
+            print("当前页没有目标时间列:", target_slot_text)
+            turned = click_right_arrow_and_wait_change()
+            if not turned:
+                break
+
+        return False, -1
+
+    # 新版页面通常是单窗口，但保留兼容
+    try:
+        driver.switch_to.window(driver.window_handles[-1])
+    except Exception:
+        pass
+
     time.sleep(1)
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/form/div/div/div/div[1]/div/div/input')))
-    # 若接近但是没到12点，停留在此页面
+
+    # 等待页面主体和表格加载
+    WebDriverWait(driver, 15).until(
+        lambda d: len(d.find_elements(By.TAG_NAME, "table")) > 0
+    )
+    WebDriverWait(driver, 15).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, "table thead tr td")) > 1
+    )
+
+    # 若接近但没到 12:00，停留等待
     flag = judge_close_to_time_12()
     if flag == 1:
+        print("接近 12 点，等待开抢...")
         while True:
             flag = judge_close_to_time_12()
             if flag == 2:
                 break
-            else:
-                time.sleep(0.5)
+            time.sleep(0.5)
         driver.refresh()
-        WebDriverWait(driver, 5).until_not(
-            EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+        WebDriverWait(driver, 10).until(
+            lambda d: len(d.find_elements(By.TAG_NAME, "table")) > 0
+        )
+        time.sleep(1)
 
     for k in range(len(start_time_list)):
-        start_time = start_time_list[k]
-        end_time = end_time_list[k]
+        raw_start_time = start_time_list[k]
+        raw_end_time = end_time_list[k]
         delta_day = delta_day_list[k]
 
         if k != 0:
             driver.refresh()
-            time.sleep(0.5)
+            time.sleep(1)
 
+        # 切换到目标日期
         move_to_date(delta_day)
 
-        start_time = datetime.datetime.strptime(
-            start_time.split('-')[1], "%H%M")
-        end_time = datetime.datetime.strptime(end_time.split('-')[1], "%H%M")
-        print("开始时间:%s" % str(start_time).split()[1])
-        print("结束时间:%s" % str(end_time).split()[1])
+        # 配置格式例如：20260416-0650 / 20260416-0750
+        start_dt = datetime.datetime.strptime(raw_start_time.split('-')[1], "%H%M")
+        end_dt = datetime.datetime.strptime(raw_end_time.split('-')[1], "%H%M")
+        target_slot_text = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
 
-        status, venue_num, table_num = click_free(
-            start_time, end_time, venue_num, 0)
-        # 如果第一页没有，就往后翻，直到不存在下一页
-        while not status:
-            next_table = driver.find_elements_by_xpath(
-                '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[3]/div[1]/div/div/div/div/div/table/thead/tr/td[6]/div/span/i')
-            WebDriverWait(driver, 10).until_not(
-                EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-            time.sleep(0.1)
-            if len(next_table) > 0:
-                driver.find_element_by_xpath(
-                    '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[3]/div[1]/div/div/div/div/div/table/thead/tr/td[6]/div/span/i').click()
-                status, venue_num, table_num = click_free(
-                    start_time, end_time, venue_num, table_num)
-            else:
-                break
+        print("目标开始时间:", start_dt.strftime('%H:%M'))
+        print("目标结束时间:", end_dt.strftime('%H:%M'))
+        print("目标时间段文本:", target_slot_text)
+
+        status, found_venue_num = goto_time_page_until_found(target_slot_text, venue_num)
+
         if status:
-            log_str += "找到空闲场地，场地编号为%d\n" % venue_num
-            print("找到空闲场地，场地编号为%d\n" % venue_num)
+            log_str += f"找到空闲场地，场地编号为{found_venue_num}\n"
+            print(f"找到空闲场地，场地编号为{found_venue_num}\n")
+
             now = datetime.datetime.now()
             today = datetime.datetime.strptime(str(now)[:10], "%Y-%m-%d")
-            date = today+datetime.timedelta(days=delta_day)
-            return status, log_str, str(date)[:10]+str(start_time)[10:], str(date)[:10]+str(end_time)[10:], venue_num
-        else:
-            log_str += "没有空余场地\n"
-            print("没有空余场地\n")
-    return status, log_str, None, None, None
+            date = today + datetime.timedelta(days=delta_day)
 
+            return (
+                True,
+                log_str,
+                str(date)[:10] + " " + start_dt.strftime('%H:%M:%S'),
+                str(date)[:10] + " " + end_dt.strftime('%H:%M:%S'),
+                found_venue_num
+            )
+        else:
+            log_str += f"没有找到时间段 {target_slot_text} 的空余场地\n"
+            print(f"没有找到时间段 {target_slot_text} 的空余场地\n")
+
+    return False, log_str, None, None, None
+
+# def click_book(driver):
+#     print("确定预约")
+#     log_str = "确定预约\n"
+#     driver.switch_to.window(driver.window_handles[-1])
+#     WebDriverWait(driver, 10).until_not(
+#         EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+#     WebDriverWait(driver, 10).until(
+#         EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[5]/div/div[2]')))
+#     driver.find_element(By.XPATH,
+#         '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[5]/div/div[2]').click()
+#     print("确定预约成功")
+#     log_str += "确定预约成功\n"
+#     return log_str
 
 def click_book(driver):
     print("确定预约")
     log_str = "确定预约\n"
-    driver.switch_to.window(driver.window_handles[-1])
-    WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[5]/div/div[2]')))
-    driver.find_element_by_xpath(
-        '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div[5]/div/div[2]').click()
-    print("确定预约成功")
-    log_str += "确定预约成功\n"
-    return log_str
+
+    try:
+        # 新版页面通常不需要切窗口，但保留兼容
+        try:
+            driver.switch_to.window(driver.window_handles[-1])
+        except Exception:
+            pass
+
+        # 等待提交区域出现
+        WebDriverWait(driver, 10).until(
+            lambda d: len(d.find_elements(By.CSS_SELECTOR, "div.submit_order_box div.action div.btn")) > 0
+        )
+
+        # 优先按文本找“提交”
+        submit_buttons = driver.find_elements(
+            By.XPATH,
+            "//div[contains(@class,'submit_order_box')]//div[contains(@class,'btn') and normalize-space(text())='提交']"
+        )
+
+        clicked = False
+        for btn in submit_buttons:
+            try:
+                if not btn.is_displayed():
+                    continue
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                time.sleep(0.2)
+                driver.execute_script("arguments[0].click();", btn)
+                clicked = True
+                print("确定预约成功")
+                log_str += "确定预约成功\n"
+                break
+            except Exception:
+                continue
+
+        if not clicked:
+            raise Exception("未找到可点击的“提交”按钮")
+
+        time.sleep(0.5)
+        return log_str
+
+    except Exception as e:
+        print("确定预约失败:", e)
+        raise
 
 
 def click_submit_order(driver):
@@ -330,10 +989,10 @@ def click_submit_order(driver):
     log_str = "提交订单\n"
     driver.switch_to.window(driver.window_handles[-1])
     WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+        EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
     WebDriverWait(driver, 10).until(
         EC.visibility_of_element_located((By.CLASS_NAME, 'payHandleItem')))
-    driver.find_element_by_xpath(
+    driver.find_element(By.XPATH,
         '/html/body/div[1]/div/div/div[3]/div[2]/div/div[2]/div/div/div[2]').click()
     #result = EC.alert_is_present()(driver)
     print("提交订单成功")
@@ -346,11 +1005,11 @@ def click_pay(driver):
     log_str = "付款（校园卡）\n"
     driver.switch_to.window(driver.window_handles[-1])
     WebDriverWait(driver, 10).until_not(
-        EC.visibility_of_element_located((By.CLASS_NAME, "loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
+        EC.visibility_of_element_located((By.CSS_SELECTOR, ".loading.ivu-spin.ivu-spin-large.ivu-spin-fix")))
     WebDriverWait(driver, 10).until(
         EC.visibility_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[3]/div[2]/div/div[3]/div[7]/div[2]')))
     time.sleep(2)
-    driver.find_element_by_xpath(
+    driver.find_element(By.XPATH,
         '/html/body/div[1]/div/div/div[3]/div[2]/div/div[3]/div[7]/div[2]').click()
     print("付款成功")
     log_str += "付款成功\n"

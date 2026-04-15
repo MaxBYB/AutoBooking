@@ -1,4 +1,4 @@
-# -*- coding: utf-8
+# -*- coding: utf-8 -*-
 import sys
 import os
 import re
@@ -23,3 +23,16 @@ def env_check():
     print('环境检查通过')
 
     return lst_conf
+
+
+def main():
+    try:
+        configs = env_check()
+        print('找到配置文件: %s' % configs)
+    except Exception as exc:
+        print(exc)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
